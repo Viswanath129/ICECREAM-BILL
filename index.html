@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VISWANATH AGENCIES - Wholesale Supplier</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- JSDPF and AutoTable Libraries for PDF Generation -->
+    <script src="https://unpkg.com/jspdf@latest/dist/jspdf.umd.min.js"></script>
+    <script src="https://unpkg.com/jspdf-autotable@latest/dist/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Custom Tailwind configuration for branded colors and animations
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'app-blue': '#007AFF',
+                        'app-green': '#34C759',
+                        'app-red': '#FF3B30',
+                        'app-yellow': '#FFCC00',
+                        'app-bg': '#F8F8F8',
+                        'app-text': '#1C1C1E',
+                        'app-border': '#E5E5E5',
+                        // Added colors for the bill summary box background/borders from the new image context
+                        'bill-pink-bg': '#FFF5F8',
+                        'bill-pink-border': '#FFCCD5',
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.3s ease-in-out',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: 0, transform: 'translateY(5px)' },
+                            '100%': { opacity: 1, transform: 'translateY(0px)' },
+                        },
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom Styles for a clean, app-like UI */
+        .btn-control {
+            @apply p-2 rounded-full font-bold shadow-sm transition-colors duration-200 flex-shrink-0;
+        }
+        .btn-plus {
+            @apply bg-app-blue text-white hover:bg-app-blue/80;
+        }
+        .btn-minus {
+            @apply bg-app-red text-white hover:bg-app-red/80;
+        }
+        .item-row {
+            transition: all 0.2s ease-in-out;
+        }
+        .item-row:hover {
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            transform: translateY(-1px);
+        }
+        
+        /* --- CORE BILL ITEM STRUCTURE FIXES --- */
+        .quantity-controls {
+            display: flex; 
+            align-items: center;
+            justify-content: space-between;
+            width: 90px;
+            flex-shrink: 0;
+        }
+        .bill-input-field {
+            @apply w-10 h-8 text-center font-bold text-app-text border-2 border-app-border rounded-lg focus:ring-app-blue focus:border-app-blue transition-colors;
+        }
+        .bill-item-controls {
+            @apply flex items-center justify-end flex-shrink-0;
+        }
+        .bill-item-controls .total-price {
+            @apply w-[100px] text-right; /* Increased width for price display */
+        }
+        
+        input[type='number']::-webkit-inner-spin-button,
+        input[type='number']::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .tab.active {
+            border-bottom: 2px solid #007AFF;
+            color: #007AFF;
+            font-weight: 700;
+        }
+        .product-icon {
+            @apply w-10 h-10 rounded-full bg-app-blue/10 flex items-center justify-center text-app-blue text-lg;
+        }
+        .bill-item-icon {
+            /* Styled to match the small, light icon/box in the image */
+            @apply w-10 h-10 rounded-lg bg-pink-100 flex items-center justify-center text-app-red/70 text-lg mr-3 flex-shrink-0;
+        }
+        /* Ensure notification is hidden by default */
+        .notification {
+            transform: translateX(100%);
+        }
+        .bill-item-details {
+            min-width: 0;
+            flex-grow: 1;
+        }
+        /* New style for the read-only quantity in Bill View */
+        .bill-quantity-summary {
+            @apply font-semibold text-sm text-gray-700 ml-2;
+        }
+    </style>
+</head>
+<body class="bg-app-bg min-h-screen font-sans text-app-text">
+    
+    <div class="max-w-7xl mx-auto relative z-10">
+        <!-- HEADER / Dashboard Totals -->
+        <header class="bg-app-blue text-white p-4 shadow-lg rounded-b-xl mb-4">
+            <div class="flex justify-between items-center mb-3">
+                <h1 class="text-2xl font-extrabold flex items-center">
+                    <i class="fas fa-truck-loading mr-3"></i> VISWANATH AGENCIES
+                </h1>
+                <button onclick="window.shareWhatsappBtn.click()" class="text-lg opacity-80 hover:opacity-100 transition"><i class="fas fa-share-alt"></i></button>
+            </div>
+            
+            <div class="grid grid-cols-3 gap-2 text-xs md:text-sm text-center pt-2 border-t border-white/30">
+                <div class="flex flex-col items-center">
+                    <span class="font-light">Bill Total</span>
+                    <span id="header-total-value" class="font-bold text-lg text-white">Rs. 0.00</span> 
+                </div>
+                <div class="flex flex-col items-center">
+                    <span class="font-light">Total Cases</span>
+                    <span id="header-total-cases" class="font-bold text-lg text-app-green/90">0</span>
+                </div>
+                <div class="flex flex-col items-center">
+                    <span class="font-light">Total Liters</span>
+                    <span id="header-total-liters" class="font-bold text-lg text-app-yellow/90">0.00</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="bg-white rounded-t-xl p-4 md:p-6 shadow-xl min-h-[calc(100vh-140px)]">
+            <div class="tab-container flex justify-around mb-6 border-b-2 border-app-border">
+                <div class="tab px-4 py-3 cursor-pointer transition-all duration-300 text-center relative active text-app-text" data-tab="items">Items List <i class="fas fa-box-open ml-2"></i></div>
+                <div class="tab px-4 py-3 cursor-pointer transition-all duration-300 text-center relative text-app-text" data-tab="bill">Bill Generator <i class="fas fa-receipt ml-2"></i></div>
+            </div>
+
+            <div class="tab-content block" id="items-tab">
+                <div class="search-bar flex mb-6 rounded-lg overflow-hidden shadow-sm bg-app-bg border border-app-border">
+                    <i class="fas fa-search text-app-blue p-3 bg-app-blue/10"></i>
+                    <input type="text" id="searchInput" placeholder="Search by name, category, or SKU..." class="flex-1 p-3 border-none outline-none bg-transparent text-base">
+                </div>
+
+                <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table id="productTable" class="w-full border-collapse text-sm">
+                            <thead>
+                                <tr class="bg-app-blue/10 border-b border-app-border text-app-blue">
+                                    <th class="p-3 text-left">Icon</th>
+                                    <th class="p-3 text-left">Product Name (SKU)</th>
+                                    <th class="p-3 text-left hidden lg:table-cell">Landing Price/Case</th>
+                                    <th class="p-3 text-center">Cases</th>
+                                    <th class="p-3 text-left">Total Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="productTableBody" class="divide-y divide-app-border">
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="items-summary" class="mt-4 p-3 bg-app-blue/5 rounded-b-lg text-center border-t border-app-blue/10">
+                        <p class="text-base font-bold text-app-blue">Total Value to Add: <span id="grand-total">Rs. 0.00</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content hidden" id="bill-tab">
+                <div class="shop-details bg-app-bg rounded-lg p-4 mb-6 shadow-sm border border-app-border">
+                    <h3 class="text-lg md:text-xl mb-4 font-bold text-app-text border-b pb-2 border-app-border flex items-center"><i class="fas fa-user-circle mr-2 text-app-blue"></i> Customer Info</h3>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label for="shopName" class="block mb-1 font-semibold text-sm">Shop Name *</label>
+                            <input type="text" id="shopName" placeholder="Enter shop name" class="w-full p-2 border border-app-border rounded-lg focus:border-app-blue focus:ring-1 focus:ring-app-blue transition-colors">
+                        </div>
+                        <div class="form-group">
+                            <label for="phoneNumber" class="block mb-1 font-semibold text-sm">Phone Number (Optional)</label>
+                            <input type="text" id="phoneNumber" placeholder="Enter phone number" class="w-full p-2 border border-app-border rounded-lg focus:border-app-blue focus:ring-1 focus:ring-app-blue transition-colors">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-white rounded-lg p-4 shadow-md border border-app-border">
+                    <!-- Title area adjusted for the image aesthetic -->
+                    <h3 class="card-title text-lg md:text-xl mb-4 font-bold text-app-text pb-2 flex items-center"><i class="fas fa-receipt mr-2 text-app-red"></i> Current Bill</h3>
+                    
+                    <!-- Item list container (lightly styled to mimic the image) -->
+                    <div id="billItems" class="min-h-24 divide-y divide-bill-pink-border border border-bill-pink-border rounded-lg p-2 bg-bill-pink-bg mb-6">
+                        <!-- Bill Items will be rendered here -->
+                    </div>
+                    
+                    <!-- Invoice Summary adjusted for the image aesthetic -->
+                      <div class="invoice-summary bg-white rounded-lg p-0 mt-6 shadow-none border-none">
+                        <div class="invoice-row flex justify-between mb-2 text-base">
+                            <span class="font-semibold text-gray-700">Total Cases:</span>
+                            <span id="totalCases" class="font-bold text-app-red">0</span>
+                        </div>
+                        <div class="invoice-row flex justify-between mb-4 text-base">
+                            <span class="font-semibold text-gray-700">Total Liters:</span>
+                            <span id="totalLiters" class="font-bold text-app-red">0.00</span>
+                        </div>
+                        <div class="invoice-row invoice-total flex justify-between pt-4 font-bold text-lg border-t border-app-blue/50">
+                            <span class="text-app-text">Total Payable Value:</span>
+                            <span id="totalInvoiceValue" class="font-bold text-xl text-app-red">Rs. 0.00</span>
+                        </div>
+                    </div>
+                    <div class="action-buttons flex flex-wrap justify-center gap-4 mt-8">
+                        <!-- Navigation buttons to mimic the image structure -->
+                        <button class="btn w-full sm:w-auto px-6 py-3 bg-gray-200 text-app-text rounded-lg font-bold hover:bg-gray-300 transition" onclick="switchTab('items')"><i class="fas fa-arrow-left mr-2"></i> Items</button>
+                        <button class="btn w-full sm:w-auto px-6 py-3 bg-app-red/80 text-white rounded-lg font-bold hover:bg-app-red/90" id="generatePdfBtn"><i class="fas fa-file-pdf mr-2"></i> PDF</button>
+                        <button class="btn w-full sm:w-auto px-6 py-3 bg-app-green text-white rounded-lg font-bold hover:bg-app-green/90" id="shareWhatsappBtn"><i class="fab fa-whatsapp mr-2"></i> Share</button>
+                        <button class="btn-secondary w-full sm:w-auto px-6 py-3 bg-gray-200 text-app-text rounded-lg font-bold hover:bg-gray-300" id="clearBillBtn"><i class="fas fa-trash mr-2"></i> Clear</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Floating Add to Bill Button - Removed as per auto-sync logic -->
+    <button id="addToBillBtn" class="btn fixed bottom-4 right-4 z-50 h-14 w-14 bg-app-blue text-white rounded-full shadow-xl flex items-center justify-center text-xl hover:scale-110 transform transition-transform duration-300 hidden">
+        <i class="fas fa-arrow-right"></i>
+    </button>
+
+    <!-- Notification -->
+    <div class="notification fixed top-4 right-4 p-4 bg-app-blue text-white rounded-lg shadow-xl transform translate-x-full transition-transform duration-500 z-50 max-w-xs" id="notification">
+        <span id="notificationText" class="block font-semibold"></span>
+        <i class="fas fa-info-circle text-lg mt-1"></i>
+    </div>
+
+<script>
+    window.addEventListener('DOMContentLoaded', () => {
+
+        // --- Data: Product List (UPDATED WITH EXPLICIT LANDING PRICE PER CASE) ---
+        // piecesPerCase and size are kept for volume (Liters) calculation
+        let productData = [
+            { skuCode: "40311", skuName: "ICE CREAM PULPY MANGO BAR - 60 ML", category: "60ML", size: 60, piecesPerCase: 14, landingPriceCase: 280 },
+            { skuCode: "40315", skuName: "ICE CREAM CHOCO SUNDAE CUP - 75 ml", category: "75ML", size: 75, piecesPerCase: 12, landingPriceCase: 240 },
+            { skuCode: "40286", skuName: "ICE CREAM FREEDOM SUNDAE CUP -75 ML", category: "CUP -75 ML", size: 75, piecesPerCase: 12, landingPriceCase: 240 },
+            { skuCode: "40380", skuName: "ICE CREAM BUTTER SCOTCH SUNDAE CUP 75 ML", category: "CUP -75 ML", size: 75, piecesPerCase: 12, landingPriceCase: 240 },
+            { skuCode: "40281", skuName: "ICE CREAM GOLDEN VANILLA TUB-125ML", category: "TUB-125ML", size: 125, piecesPerCase: 6, landingPriceCase: 192 },
+            { skuCode: "40282", skuName: "ICE CREAM BUTTERSCOTCH TUB-125ML", category: "TUB-125ML", size: 125, piecesPerCase: 6, landingPriceCase: 192 },
+            { skuCode: "40283", skuName: "ICE CREAM BLACK CURRANT TUB-125ML", category: "TUB-125ML", size: 125, piecesPerCase: 6, landingPriceCase: 192 },
+            { skuCode: "40284", skuName: "ICE CREAM BELGIUM CHOCOLATE TUB-125", category: "TUB-125ML", size: 125, piecesPerCase: 6, landingPriceCase: 240 },
+            { skuCode: "40285", skuName: "ICE CREAM ORANGE DELIGHT TUB-125ML", category: "125 ml TUB", size: 125, piecesPerCase: 6, landingPriceCase: 192 },
+            { skuCode: "40310", skuName: "ICE CREAM BUTTERSCOTCH CHOCO BAR - 35 ML", category: "35Ml Bar", size: 35, piecesPerCase: 16, landingPriceCase: 256 },
+            { skuCode: "40369", skuName: "ICE CREAM BLACK CURRANT CHOCO BAR - 35 ML", category: "35Ml Bar", size: 35, piecesPerCase: 16, landingPriceCase: 256 },
+            { skuCode: "40379", skuName: "ICE CREAM DOUBLE CHOCOBAR 35 ML", category: "35Ml Bar", size: 35, piecesPerCase: 16, landingPriceCase: 256 },
+            { skuCode: "40007", skuName: "Sr. Choco Bar - 60 Ml", category: "60 ml Bar", size: 60, piecesPerCase: 14, landingPriceCase: 224 },
+            { skuCode: "40042", skuName: "Malai Kulfi Cone - 50 Ml", category: "50 Ml Cone", size: 50, piecesPerCase: 8, landingPriceCase: 224 },
+            { skuCode: "40044", skuName: "KESAR BADAM KULFI BAR - 60 ML", category: "60 ml Bar", size: 60, piecesPerCase: 14, landingPriceCase: 392 },
+            { skuCode: "40045", skuName: "NUTTY BAR-60ML", category: "60 ml Bar", size: 60, piecesPerCase: 14, landingPriceCase: 392 },
+            { skuCode: "40279", skuName: "ICE CREAM ORANGE DELIGHT TUB - 250 ML", category: "250Ml Tub", size: 250, piecesPerCase: 1, landingPriceCase: 64 },
+            { skuCode: "40272", skuName: "ICECREAM PREMIUM BUTTERSCOTCH TUB -250ML", category: "250Ml Tub", size: 250, piecesPerCase: 1, landingPriceCase: 64 },
+            { skuCode: "40271", skuName: "ICE CREAM BELGIUM CHOCOLATE TUB - 250 ML", category: "250Ml Tub", size: 250, piecesPerCase: 1, landingPriceCase: 72 },
+            { skuCode: "40273", skuName: "ICE CREAM GOLDEN VANILLA TUB-250ML", category: "250Ml Tub", size: 250, piecesPerCase: 1, landingPriceCase: 56 },
+            { skuCode: "40047", skuName: "Mutka Kulfi - 100ML", category: "Matka", size: 100, piecesPerCase: 6, landingPriceCase: 288 },
+            { skuCode: "40124", skuName: "SWINGER MAGIC CUP - 125 ML", category: "Cups", size: 125, piecesPerCase: 8, landingPriceCase: 320 },
+            { skuCode: "40167", skuName: "BLACK CURRANT RIPPLE CUP - 125 ML", category: "Ripple", size: 125, piecesPerCase: 6, landingPriceCase: 192 },
+            { skuCode: "40172", skuName: "CARAMEL RIPPLE CUP - 125 ML", category: "Ripple", size: 125, piecesPerCase: 6, landingPriceCase: 240 },
+            { skuCode: "40173", skuName: "CHOCOLATE RIPPLE CUP - 125 ML", category: "Ripple", size: 125, piecesPerCase: 6, landingPriceCase: 240 },
+            { skuCode: "40180", skuName: "ICE CREAM CHOCO CARAMEL BAR - 70 ML", category: "70 Ml Bar", size: 70, piecesPerCase: 7, landingPriceCase: 350 },
+            { skuCode: "40219", skuName: "ICE CREAM BELGIUM CHOCOLATE BAR - 40ml", category: "BAR - 40ml", size: 40, piecesPerCase: 14, landingPriceCase: 336 },
+            { skuCode: "40220", skuName: "ICE CREAM CHOCO CARAMEL BAR - 40 ml", category: "BAR - 40ml", size: 40, piecesPerCase: 14, landingPriceCase: 336 },
+            { skuCode: "40116", skuName: "PREMIUM VANILLA TUBS - 500 ML", category: "500Ml Tub", size: 500, piecesPerCase: 1, landingPriceCase: 112 },
+            { skuCode: "40117", skuName: "PREMIUM BUTTER SCOTCH TUBS - 500 ML", category: "500Ml Tub", size: 500, piecesPerCase: 1, landingPriceCase: 128 },
+            { skuCode: "40118", skuName: "PREMIUM ANJEER BADAM TUBS - 500 ML", category: "500Ml Tub", size: 500, piecesPerCase: 1, landingPriceCase: 136 },
+            { skuCode: "40120", skuName: "MALAI KULFI TUBS - 500 ML", category: "500Ml Tub", size: 500, piecesPerCase: 1, landingPriceCase: 144 },
+            { skuCode: "40121", skuName: "BELGIUM CHOCOLATE TUBS - 500 ML", category: "500Ml Tub", size: 500, piecesPerCase: 1, landingPriceCase: 136 },
+            { skuCode: "40201", skuName: "ICE CREAM PREMIUM ROYAL KESAR TUBS-500ml", category: "500Ml Tub", size: 500, piecesPerCase: 1, landingPriceCase: 136 },
+            { skuCode: "40146", skuName: "ICE CREAM PREMIUM BLACK CURRANT TUB - 500 ML", category: "500Ml Tub", size: 500, piecesPerCase: 1, landingPriceCase: 128 },
+            { skuCode: "40209", skuName: "ICE CREAM BUTTERSCOTCH CARTON MF-700 ml", category: "Paper Pack", size: 1400, piecesPerCase: 1, landingPriceCase: 224 },
+            { skuCode: "40207", skuName: "ICE CREAM STRAWBERRY CARTON MF-700 ml", category: "Paper Pack", size: 1400, piecesPerCase: 1, landingPriceCase: 192 },
+            { skuCode: "40206", skuName: "ICE CREAM VANILLA CARTON MF-700 ml", category: "Paper Pack", size: 1400, piecesPerCase: 1, landingPriceCase: 192 },
+            { skuCode: "40212", skuName: "Anjeer Carton - 700 Ml", category: "Paper Pack", size: 1400, piecesPerCase: 1, landingPriceCase: 272 },
+            { skuCode: "40205", skuName: "ICE CREAM ROYAL KESAR CARTON MF - 700 ml", category: "Paper Pack", size: 1400, piecesPerCase: 1, landingPriceCase: 280 },
+            { skuCode: "40208", skuName: "ICE CREAM BLACK CURRANT CARTON MF-700 ml", category: "Paper Pack", size: 1400, piecesPerCase: 1, landingPriceCase: 240 },
+            { skuCode: "40210", skuName: "ICE CREAM CHOCO CHIPS CARTON MF-700 ml", category: "Paper Pack", size: 1400, piecesPerCase: 1, landingPriceCase: 240 },
+            { skuCode: "40123", skuName: "CARAMEL NUTS CARTON - 700 ML", category: "Paper Pack", size: 1400, piecesPerCase: 1, landingPriceCase: 272 },
+            { skuCode: "40204", skuName: "ICE CREAM FRUIT NUT CARTON MF - 700 ml", category: "Paper Pack", size: 1400, piecesPerCase: 1, landingPriceCase: 248 },
+            { skuCode: "40203", skuName: "ICE CREAM ALPHONSO MANGO CARTON MF-700ml", category: "Paper Pack", size: 1400, piecesPerCase: 1, landingPriceCase: 208 },
+            { skuCode: "40231", skuName: "Butter Scotch Carton - 4 L", category: "Party Pack", size: 4000, piecesPerCase: 1, landingPriceCase: 1044 },
+            { skuCode: "40232", skuName: "STRAWBERRY CARTON MF - 4 L", category: "Party Pack", size: 4000, piecesPerCase: 1, landingPriceCase: 747 },
+            { skuCode: "40233", skuName: "Vanilla Carton - 4 L", category: "Party Pack", size: 4000, piecesPerCase: 1, landingPriceCase: 792 },
+            { skuCode: "40235", skuName: "Anjeer Carton - 4 L", category: "Party Pack", size: 4000, piecesPerCase: 1, landingPriceCase: 1683 },
+            { skuCode: "40228", skuName: "Black Currant Carton - 4 L", category: "Party Pack", size: 4000, piecesPerCase: 1, landingPriceCase: 1323 },
+            { skuCode: "40238", skuName: "Chocolate Carton - 4 L", category: "Party Pack", size: 4000, piecesPerCase: 1, landingPriceCase: 1071 },
+            { skuCode: "40312", skuName: "ICE CREAM PISTA CARTON MF - 4 L", category: "Party Pack", size: 4000, piecesPerCase: 1, landingPriceCase: 783 },
+            { skuCode: "40313", skuName: "ICE CREAM ROYAL KESAR CARTON MF - 4 L", category: "Party Pack", size: 4000, piecesPerCase: 1, landingPriceCase: 1683 },
+            { skuCode: "40314", skuName: "ICE CREAM ALPHONSOCONEMANGO MF - 4 L", category: "Party Pack", size: 4000, piecesPerCase: 1, landingPriceCase: 1098 },
+            { skuCode: "40225", skuName: "Butter Scotch Cup - 40 Ml", category: "Small Cups", size: 40, piecesPerCase: 24, landingPriceCase: 192 },
+            { skuCode: "40224", skuName: "Chocolate Cup - 40 Ml", category: "Small Cups", size: 40, piecesPerCase: 24, landingPriceCase: 192 },
+            { skuCode: "40221", skuName: "Strawberry Cup MF - 40 Ml", category: "Small Cups", size: 40, piecesPerCase: 24, landingPriceCase: 192 },
+            { skuCode: "40223", skuName: "Vanilla Cup MF - 40 Ml", category: "Small Cups", size: 40, piecesPerCase: 24, landingPriceCase: 192 },
+            { skuCode: "40254", skuName: "BUTTER SCOTCH CUP MF - 75 ml", category: "Large Cups", size: 75, piecesPerCase: 18, landingPriceCase: 288 },
+            { skuCode: "40255", skuName: "ICE CREAM CHOCOLATE CUP MF - 75 ml", category: "Large Cups", size: 75, piecesPerCase: 18, landingPriceCase: 281 },
+            { skuCode: "40256", skuName: "ICE CREAM VANILLA CUP MF - 75 ml", category: "Large Cups", size: 75, piecesPerCase: 18, landingPriceCase: 288 },
+            { skuCode: "40215", skuName: "ICE CREAM COTTON CANDY B/SCOTCH BAR-60ml", category: "Small Cones", size: 60, piecesPerCase: 14, landingPriceCase: 246 },
+            { skuCode: "40216", skuName: "ICE CREAM RASPBERRY & LITCHI BAR - 60ml", category: "Small Cones", size: 60, piecesPerCase: 14, landingPriceCase: 246 },
+            { skuCode: "40161", skuName: "Round & Round - 80Ml", category: "Extuder Bar", size: 80, piecesPerCase: 14, landingPriceCase: 280 },
+            { skuCode: "40162", skuName: "Crazy wheel - 60 Ml", category: "Extuder Bar", size: 60, piecesPerCase: 14, landingPriceCase: 224 },
+            { skuCode: "40163", skuName: "Magic Twist - 80 Ml", category: "Extuder Bar", size: 80, piecesPerCase: 14, landingPriceCase: 280 },
+            { skuCode: "40133", skuName: "ICE CREAM BUTTER SCOTCH CONE - 50 ML", category: "Small Cones", size: 50, piecesPerCase: 16, landingPriceCase: 256 },
+            { skuCode: "40134", skuName: "Chocolate Cone - 50 Ml", category: "Small Cones", size: 50, piecesPerCase: 16, landingPriceCase: 256 },
+            { skuCode: "40226", skuName: "Strawberry Cone - 50 Ml", category: "Small Cones", size: 50, piecesPerCase: 16, landingPriceCase: 256 },
+            { skuCode: "40135", skuName: "Vanilla Cone - 50 Ml", category: "Small Cones", size: 50, piecesPerCase: 16, landingPriceCase: 256 },
+            { skuCode: "40218", skuName: "ICE CREAM KESAR BADAM CONE - 50 m", category: "Small Cones", size: 50, piecesPerCase: 16, landingPriceCase: 256 },
+            { skuCode: "40217", skuName: "Black Currant Cone - 50 ml", category: "Small Cones", size: 50, piecesPerCase: 16, landingPriceCase: 256 },
+            { skuCode: "40309", skuName: "ICE CREAM PISTA CONE - 50 ml", category: "Small Cones", size: 50, piecesPerCase: 16, landingPriceCase: 256 },
+            { skuCode: "40329", skuName: "ICE CREAM BELGIUM CHOCOLATE CONE - 110 m", category: "Big Cones", size: 110, piecesPerCase: 16, landingPriceCase: 640 },
+            { skuCode: "40059", skuName: "Black Currant Cone - 110 Ml", category: "Big Cones", size: 110, piecesPerCase: 16, landingPriceCase: 512 },
+            { skuCode: "40213", skuName: "ICE CREAM KESAR BADAM CONE - 110 m", category: "Big Cones", size: 110, piecesPerCase: 16, landingPriceCase: 525 },
+            { skuCode: "40017", skuName: "Butter Scotch Cone - 110 Ml", category: "Big Cones", size: 110, piecesPerCase: 16, landingPriceCase: 512 },
+            { skuCode: "40018", skuName: "Chocolate Cone - 110 Ml", category: "Big Cones", size: 110, piecesPerCase: 16, landingPriceCase: 512 },
+            { skuCode: "40019", skuName: "Strawberry Cone - 110 Ml", category: "Big Cones", size: 110, piecesPerCase: 16, landingPriceCase: 512 },
+            { skuCode: "40020", skuName: "Vanilla Cone - 110 Ml", category: "Big Cones", size: 110, piecesPerCase: 16, landingPriceCase: 512 },
+            { skuCode: "40258", skuName: "Jr. Choco Bar - 35 Ml", category: "35Ml Bar", size: 35, piecesPerCase: 16, landingPriceCase: 131 },
+            { skuCode: "40150", skuName: "JUICE BAR GRAPE - 60 ml", category: "60 ml Bar", size: 60, piecesPerCase: 18, landingPriceCase: 148 },
+            { skuCode: "40185", skuName: "Mango Juicy bar - 60 Ml", category: "60 ml Bar", size: 60, piecesPerCase: 18, landingPriceCase: 148 },
+            { skuCode: "40151", skuName: "JUICE BAR ORANGE - 60 ml", category: "60 ml Bar", size: 60, piecesPerCase: 18, landingPriceCase: 148 }
+        ];
+
+        let cartItems = [];
+
+        // DOM Elements
+        const searchInput = document.getElementById('searchInput');
+        const productTableBody = document.getElementById('productTableBody');
+        const billItems = document.getElementById('billItems');
+        const totalCases = document.getElementById('totalCases');
+        const totalLiters = document.getElementById('totalLiters');
+        const totalInvoiceValue = document.getElementById('totalInvoiceValue');
+        const generatePdfBtn = document.getElementById('generatePdfBtn');
+        const shareWhatsappBtn = document.getElementById('shareWhatsappBtn');
+        const clearBillBtn = document.getElementById('clearBillBtn');
+        const tabs = document.querySelectorAll('.tab');
+        const tabContents = document.querySelectorAll('.tab-content');
+        const shopNameInput = document.getElementById('shopName');
+        const phoneNumberInput = document.getElementById('phoneNumber');
+        const grandTotalSpan = document.getElementById('grand-total');
+        const headerTotalValue = document.getElementById('header-total-value');
+        const headerTotalCases = document.getElementById('header-total-cases');
+        const headerTotalLiters = document.getElementById('header-total-liters');
+        const notification = document.getElementById('notification');
+        const notificationText = document.getElementById('notificationText');
+
+        // --- Core Calculation Logic ---
+        function getLandingPrice(item) {
+            // Directly returns the Landing Price Per Case
+            return item.landingPriceCase;
+        }
+
+        // --- UI Rendering Functions (Items List Tab) ---
+        function renderProductTable(data) {
+            productTableBody.innerHTML = data.map(item => {
+                // Determine the current value in cart for display in the input field
+                const casesInCart = cartItems.find(c => c.skuCode === item.skuCode)?.cases || 0;
+                const landingPrice = getLandingPrice(item);
+                const initialTotal = casesInCart * landingPrice;
+
+                return `
+                <tr class="item-row" data-sku="${item.skuCode}">
+                    <td class="p-3"><div class="product-icon"><i class="fas fa-ice-cream"></i></div></td>
+                    <td class="p-3 text-sm font-medium">
+                        ${item.skuName}<br>
+                        <span class="text-xs text-gray-500">SKU: ${item.skuCode} | ${item.piecesPerCase} Pcs</span>
+                    </td>
+                    <td class="p-3 hidden lg:table-cell text-sm font-semibold text-app-red">Rs. ${landingPrice.toFixed(2)}</td>
+                    
+                    <!-- Stepper Buttons (Item List) -->
+                    <td class="p-3 text-right">
+                        <div class="flex items-center space-x-1 justify-end">
+                            <button type="button" class="qty-btn-minus h-8 w-8 text-sm bg-app-red text-white rounded-full hover:bg-app-red/80 transition" data-sku="${item.skuCode}"><i class="fas fa-minus"></i></button>
+                            <input type="number" class="item-quantity p-1 border border-app-border rounded-lg text-center font-bold text-sm w-16 h-8" data-sku="${item.skuCode}" value="${casesInCart}" min="0">
+                            <button type="button" class="qty-btn-plus h-8 w-8 text-sm bg-app-blue text-white rounded-full hover:bg-app-blue/80 transition" data-sku="${item.skuCode}"><i class="fas fa-plus"></i></button>
+                        </div>
+                    </td>
+                    <!-- End Stepper Buttons -->
+
+                    <td class="p-3 total-price text-app-red font-bold" data-sku="${item.skuCode}">Rs. ${initialTotal.toFixed(2)}</td>
+                </tr>
+            `}).join('');
+            
+            updateGrandTotal(); 
+        }
+        
+        function updateRowTotal(row, sku, cases) {
+            const product = productData.find(p => p.skuCode === sku);
+            if (!product) return;
+            const landingPrice = getLandingPrice(product);
+            const total = cases * landingPrice;
+            
+            // Check if row is a DOM element before querying
+            if(row && typeof row.querySelector === 'function') {
+                 row.querySelector('.total-price').textContent = `Rs. ${total.toFixed(2)}`;
+            } else {
+                 // For bill-tab, we update the total price span directly using the SKU attribute
+                 const totalSpan = document.querySelector(`#billItems [data-sku-total="${sku}"]`);
+                 if (totalSpan) {
+                    totalSpan.textContent = `Rs. ${total.toFixed(2)}`;
+                 }
+            }
+        }
+
+        // Handles manual text input changes in Items List Tab
+        function handleTableInput(e) {
+            if (e.target.classList.contains('item-quantity')) {
+                const row = e.target.closest('tr');
+                let cases = parseInt(e.target.value) || 0;
+                const sku = e.target.dataset.sku;
+
+                if (cases < 0) {
+                    cases = 0;
+                    e.target.value = 0;
+                }
+
+                updateRowTotal(row, sku, cases);
+                // Sync cart state immediately on manual entry
+                syncItemQuantityToCart(sku, cases, row);
+                updateGrandTotal();
+            }
+        }
+
+        // Handles Stepper Button Clicks (Items List Tab)
+        function handleQuantityButtonClick(e) {
+            const button = e.target.closest('.qty-btn-minus, .qty-btn-plus');
+            
+            if (button) {
+                const isPlus = button.classList.contains('qty-btn-plus');
+                const sku = button.dataset.sku;
+                const row = button.closest('tr');
+                // FIXED: Ensure correct input targeting
+                const input = row.querySelector('.item-quantity[data-sku="' + sku + '"]'); 
+                
+                if (!input) return;
+
+                let currentValue = parseInt(input.value) || 0;
+                const previousValue = cartItems.find(c => c.skuCode === sku)?.cases || 0;
+                
+                if (isPlus) {
+                    currentValue += 1;
+                } else if (currentValue > 0) {
+                    currentValue -= 1;
+                }
+
+                input.value = currentValue;
+                
+                // Manually trigger the local row calculation
+                updateRowTotal(row, sku, currentValue);
+                
+                // Sync the change to the main cart state
+                const added = syncItemQuantityToCart(sku, currentValue, row);
+                
+                // Show notification ONLY if it was newly added (i.e., cart was 0, now > 0)
+                if (isPlus && previousValue === 0 && currentValue > 0) {
+                    showNotification(`Item added to bill.`);
+                }
+            }
+        }
+
+        // Core function to update the cartItems state from the table input (non-additive, direct set)
+        function syncItemQuantityToCart(sku, cases) {
+            const product = productData.find(p => p.skuCode === sku);
+            if (!product) return false;
+
+            const existingItemIndex = cartItems.findIndex(item => item.skuCode === sku);
+            let addedNewItem = false;
+            
+            if (cases > 0) {
+                if (existingItemIndex > -1) {
+                    cartItems[existingItemIndex].cases = cases;
+                } else {
+                    cartItems.push({ ...product, cases });
+                    addedNewItem = true;
+                }
+            } else {
+                if (existingItemIndex > -1) {
+                    cartItems.splice(existingItemIndex, 1);
+                }
+            }
+            
+            // Crucial: Update bill display only if the bill tab is currently active
+            if (document.getElementById('bill-tab').classList.contains('block')) {
+                 updateBillDisplay();
+            } else {
+                 updateInvoiceSummary(); // Update totals in the header only
+            }
+            return addedNewItem;
+        }
+
+        function updateGrandTotal() {
+            // Recalculates the total value based on *all* items currently in the cart.
+            const total = cartItems
+                .reduce((sum, item) => sum + (item.cases * getLandingPrice(item)), 0);
+            
+            // In the item list view, the grand-total shows the sum of selected items (which is cartItems now)
+            grandTotalSpan.textContent = `Rs. ${total.toFixed(2)}`;
+        }
+        
+        function updateBillDisplay() {
+            if (cartItems.length === 0) {
+                billItems.innerHTML = `<div class="empty-bill text-center p-6 text-gray-500 bg-app-bg rounded-lg mt-4"><i class="fas fa-box-open text-4xl text-app-border"></i><p class="font-semibold mt-2 text-sm">No items added to the bill yet.</p></div>`;
+            } else {
+                billItems.innerHTML = cartItems.map(item => {
+                    const landingPrice = getLandingPrice(item);
+                    const totalItemValue = item.cases * landingPrice;
+                    return `
+                        <div class="bill-item flex items-center justify-between p-3 py-4 animate-fade-in" data-sku="${item.skuCode}">
+                            <!-- Icon and Product Details -->
+                            <div class="flex items-center flex-1 min-w-0">
+                                <div class="bill-item-icon"><i class="fas fa-ice-cream"></i></div>
+                                <div class="bill-item-details min-w-0 pr-2">
+                                    <strong class="text-sm font-semibold truncate block">${item.skuName}</strong>
+                                    <!-- Combined Pieces per Case and Quantity -->
+                                    <div class="text-xs text-gray-500 mt-1 flex items-center">
+                                        <input 
+                                            type="number" 
+                                            value="${item.cases}" 
+                                            data-sku="${item.skuCode}" 
+                                            oninput="window.updateBillItemQuantity('${item.skuCode}', this.value, event)" 
+                                            class="w-10 h-6 text-center font-bold text-app-text border-b border-app-red/50 focus:border-app-red/70 focus:outline-none bg-transparent text-sm"
+                                            min="0"
+                                        >
+                                        <span class="ml-1 mr-2 text-app-red/70">Cases</span> 
+                                        <span class="text-gray-500">(${item.piecesPerCase} pcs/case)</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Total Price and Remove Button (Simplified) -->
+                            <div class="bill-item-controls ml-4">
+                                <!-- Total Price - Added data-sku-total for easy targeting -->
+                                <span class="total-price font-bold text-lg text-app-red" data-sku-total="${item.skuCode}">Rs. ${totalItemValue.toFixed(2)}</span>
+
+                                <!-- Remove Button -->
+                                <button class="text-app-red hover:text-app-red/70 transition-colors text-xl ml-2" onclick="window.removeItemFromBill('${item.skuCode}')" title="Remove Item">
+                                    <i class="fas fa-times-circle"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            updateInvoiceSummary();
+            // We no longer explicitly re-render the product table here as it slows down the bill tab.
+        }
+        
+        // Define global functions for quantity control buttons in BILL TAB 
+        // FIX: The function now takes 'event' to grab the input element directly.
+        window.updateBillItemQuantity = function(sku, newCases, event) {
+            const cases = parseInt(newCases) || 0;
+            const product = productData.find(p => p.skuCode === sku);
+
+            // 1. Update Cart State and Summary (syncItemQuantityToCart handles this)
+            syncItemQuantityToCart(sku, cases);
+            
+            // 2. Immediate Visual Update for the specific row price
+            if (product) {
+                const totalSpan = document.querySelector(`#billItems [data-sku-total="${sku}"]`);
+                const newTotalValue = cases * getLandingPrice(product);
+                if (totalSpan) {
+                    totalSpan.textContent = `Rs. ${newTotalValue.toFixed(2)}`;
+                }
+            }
+
+            // 3. Since the item list is based on cart data, updating the cart means the list is implicitly updated.
+            // We don't need a full re-render here, as the input update is handled in the items tab itself when switching.
+        }
+
+        function updateInvoiceSummary() {
+            // Calculates the totals for the invoice summary (Cases, Liters, Value)
+            const summary = cartItems.reduce((acc, item) => {
+                const landingPrice = getLandingPrice(item);
+                acc.totalCases += item.cases;
+                // Liters calculation: (size in ml * pieces per case * cases) / 1000
+                acc.totalLiters += (item.cases * item.piecesPerCase * item.size) / 1000;
+                acc.totalValue += item.cases * landingPrice;
+                return acc;
+            }, { totalCases: 0, totalLiters: 0, totalValue: 0 });
+
+            // Update DOM (Bill Tab Summary)
+            totalCases.textContent = summary.totalCases;
+            totalLiters.textContent = summary.totalLiters.toFixed(2);
+            totalInvoiceValue.textContent = `Rs. ${summary.totalValue.toFixed(2)}`;
+            
+            // Update Header Summary
+            headerTotalCases.textContent = summary.totalCases;
+            headerTotalLiters.textContent = summary.totalLiters.toFixed(2);
+            headerTotalValue.textContent = `Rs. ${summary.totalValue.toFixed(2)}`;
+        }
+
+        window.removeItemFromBill = function(sku) {
+            cartItems = cartItems.filter(item => item.skuCode !== sku);
+            // Re-render the table view to update the input field value back to 0
+            renderProductTable(productData); 
+            updateBillDisplay();
+            showNotification('Item removed.');
+        }
+
+        window.clearBill = function() { // Made global
+            cartItems = [];
+            renderProductTable(productData); // Re-renders table to show current cart state (0 cases)
+            updateBillDisplay(); // Clears bill view and summary
+            shopNameInput.value = '';
+            phoneNumberInput.value = '';
+            showNotification('Bill cleared!');
+        }
+
+        // FIX: Made function global so HTML onclick attributes can access it.
+        window.switchTab = function(tabId) { 
+            tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+            tabContents.forEach(tc => {
+                const isActive = tc.id === `${tabId}-tab`;
+                tc.classList.toggle('hidden', !isActive);
+                tc.classList.toggle('block', isActive);
+            });
+            
+            if (tabId === 'items') {
+                // When returning to Items List, re-render to load cart quantities into inputs
+                renderProductTable(productData); 
+            } else if (tabId === 'bill') {
+                // When switching to Bill Generator, ensure the bill view is up-to-date
+                updateBillDisplay();
+            }
+        }
+
+        // --- PDF Generation Logic (kept local, only button listener uses it) ---
+        function generatePDF(action = 'save') {
+            if (cartItems.length === 0 || !shopNameInput.value.trim()) {
+                showNotification(!shopNameInput.value.trim() ? 'Please enter a shop name.' : 'No items in bill.');
+                return null;
+            }
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const shopName = shopNameInput.value.trim();
+            const dateStr = new Date().toLocaleDateString('en-IN');
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const primaryColor = [0, 122, 255]; // #007AFF
+
+            // 1. Header (Company Info)
+            doc.setFontSize(22);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+            doc.text('VISWANATH AGENCIES', pageWidth / 2, 20, { align: 'center' });
+
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(50, 50, 50);
+            doc.text('DODLA ICECREAM SUPPLIER - Invoice/Order Sheet', pageWidth / 2, 27, { align: 'center' });
+            
+            // 2. Customer Info Block
+            let currentY = 40;
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'bold');
+            doc.text('BILL TO:', 14, currentY);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Shop Name: ${shopName}`, 14, currentY + 5);
+            
+            if (phoneNumberInput.value.trim()) {
+                doc.text(`Phone: ${phoneNumberInput.value.trim()}`, 14, currentY + 10);
+                currentY += 5;
+            }
+            
+            doc.setFont('helvetica', 'bold');
+            doc.text(`Date: ${dateStr}`, pageWidth - 14, 40, { align: 'right' });
+            currentY += 15;
+
+            // 3. Invoice Table Data
+            const tableData = cartItems.map(item => {
+                const landingPrice = getLandingPrice(item);
+                const totalValue = item.cases * landingPrice;
+                const totalPieces = item.cases * item.piecesPerCase;
+                const liters = (item.cases * item.piecesPerCase * item.size) / 1000;
+                return [
+                    item.skuCode, 
+                    item.skuName, 
+                    item.cases, 
+                    totalPieces, 
+                    `${liters.toFixed(2)} Ltr`,
+                    `Rs. ${landingPrice.toFixed(2)}`, // Price per Case
+                    `Rs. ${totalValue.toFixed(2)}`
+                ];
+            });
+
+            doc.autoTable({
+                startY: currentY,
+                head: [['SKU', 'Product Name', 'Cases', 'Pcs', 'Volume', 'Price/Case', 'Total Value']],
+                body: tableData,
+                headStyles: { 
+                    fillColor: primaryColor, // App Blue
+                    textColor: 255, 
+                    fontStyle: 'bold',
+                    fontSize: 10
+                },
+                styles: { font: 'helvetica', fontSize: 8.5 },
+                columnStyles: { 
+                    0: { cellWidth: 16 }, 
+                    1: { cellWidth: 60 }, 
+                    2: { cellWidth: 14, halign: 'center' }, 
+                    3: { cellWidth: 14, halign: 'center' },
+                    4: { cellWidth: 18, halign: 'center' },
+                    5: { cellWidth: 28, halign: 'right' }, 
+                    6: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
+                }
+            });
+
+            let finalY = doc.lastAutoTable.finalY + 8;
+            
+            // 4. Final Summary
+            const totalCasesValue = totalCases.textContent;
+            const totalLitersValue = totalLiters.textContent;
+            const totalValueText = totalInvoiceValue.textContent;
+            
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Total Cases: ${totalCasesValue}`, 14, finalY);
+            doc.text(`Total Volume: ${totalLitersValue} Liters`, 14, finalY + 5);
+
+            // Grand Total (Highlighted)
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+            doc.text(`GRAND TOTAL: ${totalValueText}`, pageWidth - 14, finalY + 10, { align: 'right' });
+            doc.setTextColor(50, 50, 50); // Reset color
+            
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.text('Thank you for your business!', pageWidth / 2, finalY + 25, { align: 'center' });
+
+            if (action === 'save') {
+                doc.save(`${shopName}_Invoice_${dateStr.replace(/\//g, '-')}.pdf`);
+                showNotification('PDF generated and downloaded!');
+            }
+            return doc;
+        }
+
+        // --- Utility Functions (kept local) ---
+
+        function performSearch() {
+            const query = searchInput.value.toLowerCase().trim();
+            const filteredData = productData.filter(item => 
+                item.skuCode.toLowerCase().includes(query) ||
+                item.skuName.toLowerCase().includes(query) ||
+                item.category.toLowerCase().includes(query)
+            );
+            renderProductTable(filteredData);
+        }
+
+        window.shareViaWhatsApp = function() { // Made global
+            if (cartItems.length === 0 || !shopNameInput.value.trim()) {
+                showNotification(!shopNameInput.value.trim() ? 'Please enter a shop name.' : 'No items to share.');
+                return;
+            }
+            
+            const shopName = shopNameInput.value.trim();
+            let message = `🛒 *VISWANATH AGENCIES Order - ${shopName}*\n`;
+            message += `_Date: ${new Date().toLocaleDateString('en-IN')}_\n\n`;
+            
+            cartItems.forEach(item => {
+                const totalValue = item.cases * getLandingPrice(item);
+                const totalPieces = item.cases * item.piecesPerCase;
+                message += `*${item.skuName}*\n- Cases: ${item.cases} (${totalPieces} Pcs)\n- Price/Case: Rs. ${getLandingPrice(item).toFixed(2)}\n- Total Value: Rs. ${totalValue.toFixed(2)}\n\n`;
+            });
+            
+            message += `*--- FINAL BILL ---*\n`;
+            message += `*Total Cases:* ${totalCases.textContent}\n`;
+            message += `*Total Liters:* ${totalLiters.textContent}\n`;
+            message += `*Total Payable Value:* ${totalInvoiceValue.textContent}`;
+            
+            window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+            showNotification('WhatsApp message prepared!');
+        }
+
+        function showNotification(message) {
+            notificationText.textContent = message;
+            notification.classList.remove('translate-x-full');
+            setTimeout(() => {
+                notification.classList.add('translate-x-full');
+            }, 3000);
+        }
+
+        // --- Initial Setup and Event Listeners ---
+        
+        // Initial setup
+        renderProductTable(productData); 
+        updateBillDisplay();
+
+        // Event Listeners
+        searchInput.addEventListener('input', performSearch);
+        productTableBody.addEventListener('input', handleTableInput);
+        productTableBody.addEventListener('click', handleQuantityButtonClick);
+        
+        generatePdfBtn.addEventListener('click', () => generatePDF('save'));
+        shareWhatsappBtn.addEventListener('click', window.shareViaWhatsApp);
+        clearBillBtn.addEventListener('click', window.clearBill);
+        tabs.forEach(tab => tab.addEventListener('click', (e) => {
+            window.switchTab(e.target.dataset.tab);
+        }));
+    });
+</script>
+</body>
+</html>
